@@ -37,6 +37,18 @@
     <!-- For Magic Leap Support -->
     <script src="js/three/examples/jsm/vr/HelioWebXRPolyfill.js"></script>
 
+    <script>
+      window.fbAsyncInit = function() {
+        FB.init({
+          appId            : '466333717870725',
+          autoLogAppEvents : true,
+          xfbml            : true,
+          version          : 'v13.0'
+        });
+      };
+    </script>
+    <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js"></script>
+
     <!-- WebGL 2 shaders -->
     <script id="vs-particles-2" type="x-shader/x-vertex">
       uniform float pointSize;
@@ -66,6 +78,8 @@
       import { Projector } from './js/three/examples/jsm/renderers/Projector.js';
       import { GeometryUtils } from './js/three/examples/jsm/utils/GeometryUtils.js';
       import { WEBVR } from './js/three/examples/jsm/vr/WebVR.js';
+
+      var textToDisplay = "Web XR!";
 
       function getQueryString(name, defaultValue) {
         var query = window.location.search.substring(1);
@@ -162,6 +176,121 @@
 
       }
 
+      function getFBLoginButton ( renderer ) {
+
+        var button = document.createElement( 'button' );
+        button.style.position = 'absolute';
+        button.style.right = '20px';
+        button.style.bottom = '50px';
+        button.style.width = '100px';
+        button.style.border = '0';
+        button.style.padding = '8px';
+        button.style.cursor = 'pointer';
+        button.style.backgroundColor = '#000';
+        button.style.color = '#fff';
+        button.style.fontFamily = 'sans-serif';
+        button.style.fontSize = '13px';
+        button.style.fontStyle = 'normal';
+        button.style.textAlign = 'center';
+        button.style.zIndex = '999';
+        button.textContent = 'FB GET NAME';
+        button.onclick = function() {
+          FB.login(function(response) {
+            // handle the response
+            if (response.status === 'connected') {
+               // Logged into your webpage and Facebook.
+               FB.api('/me', {fields: 'first_name'}, function(response) {
+                 console.log(response);
+               });
+            } else {
+            }
+          }, {scope: 'public_profile,email'});
+        };
+        return button;
+      }
+
+      function createDataTexture() {
+        var fontLoader = new THREE.FontLoader();
+        fontLoader.load( 'media/fonts/helvetiker_bold.typeface.json', function ( font ) {
+
+          var textGeo = new THREE.TextGeometry( textToDisplay, {
+            size: 0.7,
+            height: 0.25,
+            curveSegments: 0,
+            font: font,
+            weight: "bold",
+            style: "normal",
+          });
+
+          textGeo.computeBoundingBox();
+          var bounds = textGeo.boundingBox;
+          textGeo.applyMatrix( new THREE.Matrix4().makeTranslation(
+            (bounds.max.x - bounds.min.x) * -0.5,
+            (bounds.max.y - bounds.min.y) * -0.5,
+            (bounds.max.z - bounds.min.z) * -0.5));
+
+          // THREE.js BUG FIX
+          particleCount = Math.floor(particleCount / 3) * 3;
+
+          points = GeometryUtils.randomPointsInGeometry( textGeo, particleCount );
+
+          data = new Float32Array( particleCount * 4 );
+          for ( var i = 0, j = 0, l = data.length; i < l; i += 4, j += 1 ) {
+            data[ i ] = points[ j ].x;
+            data[ i + 1 ] = points[ j ].y;
+            data[ i + 2 ] = points[ j ].z;
+            data[ i + 3 ] = 0.0;
+          }
+
+          var velData = new Float32Array( particleCount * 4 );
+          for ( var i = 0, l = velData.length; i < l; i += 4 ) {
+            velData[ i ] = (Math.random() - 0.5) * 0.004;
+            velData[ i + 1 ] = (Math.random() - 0.5) * 0.004;
+            velData[ i + 2 ] = (Math.random() - 0.5) * 0.004;
+            velData[ i + 3 ] = 0.0;
+          }
+
+          var randomSeedData = new Uint32Array( particleCount );
+          for ( var i = 0; i < randomSeedData.length; ++i ) {
+            randomSeedData[ i ] = Math.random() * INT_MAX;
+          }
+
+          geometry = new THREE.BufferGeometry();
+          geometry.addAttribute( 'position', new THREE.BufferAttribute( data, 4 ).setDynamic( true ) );
+          geometry.addAttribute( 'velocity', new THREE.BufferAttribute( velData, 4 ).setDynamic( true ) );
+          geometry.addAttribute( 'randomSeed', new THREE.BufferAttribute( randomSeedData, 1, false, true ).setDynamic( true ) );
+          geometry2 = geometry.clone();
+
+          material = new THREE.ShaderMaterial( {
+            uniforms: {
+              "pointSize": { type: "f", value: pointSize }
+            },
+            vertexShader: document.getElementById( 'vs-particles-2' ).textContent,
+            fragmentShader: document.getElementById( 'fs-particles-2' ).textContent,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: true,
+            transparent: true
+          } );
+
+          transformFeedback = gl.createTransformFeedback();
+
+          originBuffer = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, originBuffer);
+          gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+          simulationShader = new SimulationShader(renderer, maxColliders);
+          simulationShader.setColliders(colliders);
+
+          mesh = new THREE.Points(geometry, material);
+          mesh.position.z = -roomSize.z*0.25;
+          mesh.position.y = roomSize.y/2;
+          // Should probably be linked to the room size somehow.
+          mesh.scale.set(textScale, textScale, textScale);
+          scene.add(mesh);
+        } );
+      }
+
       function inAR() {
         if (!('getSession' in renderer.vr)) {
           return false;
@@ -190,7 +319,8 @@
         renderer.vr.enabled = true;
         container.appendChild( renderer.domElement );
 
-        document.body.appendChild( getFullscreenButton( renderer ) );
+        //document.body.appendChild( getFullscreenButton( renderer ) );
+        document.body.appendChild( getFBLoginButton( renderer ) );
 
         let btnVR = WEBVR.createButton(
             renderer, {
@@ -274,87 +404,7 @@
 
         if (isWebGL2) {
           // Start Creation of DataTexture
-
-          var fontLoader = new THREE.FontLoader();
-          fontLoader.load( 'media/fonts/helvetiker_bold.typeface.json', function ( font ) {
-
-            var textGeo = new THREE.TextGeometry( "WebXR!", {
-              size: 0.7,
-              height: 0.25,
-              curveSegments: 0,
-              font: font,
-              weight: "bold",
-              style: "normal",
-            });
-
-            textGeo.computeBoundingBox();
-            var bounds = textGeo.boundingBox;
-            textGeo.applyMatrix( new THREE.Matrix4().makeTranslation(
-              (bounds.max.x - bounds.min.x) * -0.5,
-              (bounds.max.y - bounds.min.y) * -0.5,
-              (bounds.max.z - bounds.min.z) * -0.5));
-
-            // THREE.js BUG FIX
-            particleCount = Math.floor(particleCount / 3) * 3;
-
-            points = GeometryUtils.randomPointsInGeometry( textGeo, particleCount );
-
-            data = new Float32Array( particleCount * 4 );
-            for ( var i = 0, j = 0, l = data.length; i < l; i += 4, j += 1 ) {
-              data[ i ] = points[ j ].x;
-              data[ i + 1 ] = points[ j ].y;
-              data[ i + 2 ] = points[ j ].z;
-              data[ i + 3 ] = 0.0;
-            }
-
-            var velData = new Float32Array( particleCount * 4 );
-            for ( var i = 0, l = velData.length; i < l; i += 4 ) {
-              velData[ i ] = (Math.random() - 0.5) * 0.004;
-              velData[ i + 1 ] = (Math.random() - 0.5) * 0.004;
-              velData[ i + 2 ] = (Math.random() - 0.5) * 0.004;
-              velData[ i + 3 ] = 0.0;
-            }
-
-            var randomSeedData = new Uint32Array( particleCount );
-            for ( var i = 0; i < randomSeedData.length; ++i ) {
-              randomSeedData[ i ] = Math.random() * INT_MAX;
-            }
-
-            geometry = new THREE.BufferGeometry();
-            geometry.addAttribute( 'position', new THREE.BufferAttribute( data, 4 ).setDynamic( true ) );
-            geometry.addAttribute( 'velocity', new THREE.BufferAttribute( velData, 4 ).setDynamic( true ) );
-            geometry.addAttribute( 'randomSeed', new THREE.BufferAttribute( randomSeedData, 1, false, true ).setDynamic( true ) );
-            geometry2 = geometry.clone();
-
-            material = new THREE.ShaderMaterial( {
-              uniforms: {
-                "pointSize": { type: "f", value: pointSize }
-              },
-              vertexShader: document.getElementById( 'vs-particles-2' ).textContent,
-              fragmentShader: document.getElementById( 'fs-particles-2' ).textContent,
-              blending: THREE.AdditiveBlending,
-              depthWrite: false,
-              depthTest: true,
-              transparent: true
-            } );
-
-            transformFeedback = gl.createTransformFeedback();
-
-            originBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, originBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-
-            simulationShader = new SimulationShader(renderer, maxColliders);
-            simulationShader.setColliders(colliders);
-
-            mesh = new THREE.Points(geometry, material);
-            mesh.position.z = -roomSize.z*0.25;
-            mesh.position.y = roomSize.y/2;
-            // Should probably be linked to the room size somehow.
-            mesh.scale.set(textScale, textScale, textScale); 
-            scene.add(mesh);
-
-          } );
+          //createDataTexture();
 
         }
 
