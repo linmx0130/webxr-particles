@@ -79,8 +79,6 @@
       import { GeometryUtils } from './js/three/examples/jsm/utils/GeometryUtils.js';
       import { WEBVR } from './js/three/examples/jsm/vr/WebVR.js';
 
-      var textToDisplay = "Web XR!";
-
       function getQueryString(name, defaultValue) {
         var query = window.location.search.substring(1);
         var vars = query.split("&");
@@ -201,15 +199,17 @@
                // Logged into your webpage and Facebook.
                FB.api('/me', {fields: 'first_name'}, function(response) {
                  console.log(response);
+                 var textToDisplay = response.first_name;
+                 createDataTexture(textToDisplay);
                });
             } else {
             }
-          }, {scope: 'public_profile,email'});
+          }, {scope: 'public_profile'});
         };
         return button;
       }
 
-      function createDataTexture() {
+      function createDataTexture(textToDisplay) {
         var fontLoader = new THREE.FontLoader();
         fontLoader.load( 'media/fonts/helvetiker_bold.typeface.json', function ( font ) {
 
